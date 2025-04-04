@@ -1,0 +1,11 @@
+model:
+  test_size: 0.2
+  random_state: 9
+  balance_class_type: "smothe"
+  target: "Class"
+  drop_columns: ["credit_card_number", "timestamp"]
+  categorical_features: "merchant"
+
+data:
+  raw_data: "data/raw/"
+  process_data: "data/processed"
