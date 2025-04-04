@@ -4,4 +4,4 @@ __pycache__/
 *.parquet
 
 *.html
-*.csv
+*.csvnotebooks/test_fixed_data.csv
