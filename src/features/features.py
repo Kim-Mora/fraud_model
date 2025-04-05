@@ -1,9 +1,10 @@
 import pandas as pd
+from pandas import DataFrame
 from typing import Any
 from src.utils import calculate_distance
 
 class FraudFeatureEgineering:
-    def __init__(self, df):
+    def __init__(self:Any, df:DataFrame)-> None:
         self.df = df.copy()
         self.primary_key = 'credit_card_number'
         self.merchant_grouper = [self.primary_key, 'merchant']
@@ -132,13 +133,11 @@ class FraudFeatureEgineering:
             grouper = self.merchant_grouper
         self.df['prev_lat'] = self.df.groupby(grouper)['latitude'].shift(periods=1)
         self.df['prev_long'] = self.df.groupby(grouper)['longitude'].shift(periods=1)
-        self.df[col_name] = self.df.apply(lambda row: 
-                                    calculate_distance(row, same_merchant=by_merchant),
-                                    axis=1)
+        self.df[col_name] = self.df.apply(calculate_distance, axis=1)
         self.df.drop(['prev_lat', 'prev_long'], axis=1, inplace=True)
 
     def get_dummies_for_categorical_features(self:Any) ->None:
-        self.df = self.df.get_dummies(self.df, 
+        self.df = pd.get_dummies(self.df, 
                                       columns=['merchant'],
                                       drop_first=True)
 
