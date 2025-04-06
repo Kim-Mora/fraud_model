@@ -1,15 +1,17 @@
 import pandas as pd
 from pandas import DataFrame
-from typing import Any
-from src.utils import calculate_distance
+from src.utils import calculate_distance, calculate_woes, \
+                    split_train_test_set
 
 class FraudFeatureEgineering:
-    def __init__(self:Any, df:DataFrame)-> None:
+    def __init__(self:any, df:DataFrame)-> None:
         self.df = df.copy()
         self.primary_key = 'credit_card_number'
         self.merchant_grouper = [self.primary_key, 'merchant']
+        self.train_set = None
+        self.test_set = None
 
-    def create_time_delta_features(self:Any, by_merchant:bool=False)-> None:
+    def create_time_delta_features(self:any, by_merchant:bool=False)-> None:
         """Create time delta features for a given credit card. It can be
            in the whole credit_card_history or grouped by merchant.
 
@@ -34,7 +36,7 @@ class FraudFeatureEgineering:
             col_name = 'time_between_transactions_by_merchant'
         self.df[col_name] = self.df.groupby(grouper)['timestamp'].diff()
 
-    def get_running_statistic_features(self:Any, col:str, mean:bool=True) -> None:
+    def get_running_statistic_features(self:any, col:str, mean:bool=True) -> None:
         """Gets for each transaction the avg or std for a given column
            for each merchant for each credit_card_number.
 
@@ -62,7 +64,7 @@ class FraudFeatureEgineering:
                     level=[0,1], drop=True
                 )
 
-    def get_is_anormal_amount_feature(self:Any, confidence:int) -> None:
+    def get_is_anormal_amount_feature(self:any, confidence:int) -> None:
         """Calculate if the amount of the current transaction is beyond 
            the current mean amount plus a given confidence level on a given merchant:
            The confidence level is given as the follow:
@@ -91,7 +93,7 @@ class FraudFeatureEgineering:
                                         + confidence * self.df['prev_running_std'])) * 1
         self.df.drop(['prev_running_mean', 'prev_running_std'], axis=1, inplace=True)
 
-    def get_times_using_same_merchant_feature(self:Any)-> None:
+    def get_times_using_same_merchant_feature(self:any)-> None:
         """Get the number of times a given credit card buy on the same merchant.
 
            Example:
@@ -106,7 +108,7 @@ class FraudFeatureEgineering:
             self.df.groupby(self.merchant_grouper).cumcount() + 1
         )
 
-    def get_num_transactions_by_cc(self:Any) -> None:
+    def get_num_transactions_by_cc(self:any) -> None:
         """Get the cumulative count of transactions by user
            Example:
             data = {credit_card_number: [1, 2, 1, 2, 2, 2, 1],
@@ -118,7 +120,7 @@ class FraudFeatureEgineering:
         self.df['num_transactions_by_cc'] = \
             self.df.groupby(self.primary_key)[self.primary_key].transform('count')
 
-    def get_distance_between_application(self:Any, by_merchant:bool=False) -> None:
+    def get_distance_between_application(self:any, by_merchant:bool=False) -> None:
         """Calculate the distance (in km) between two transactions of the same credit_card_number
            it can be both general or by merchant.
            
@@ -136,12 +138,27 @@ class FraudFeatureEgineering:
         self.df[col_name] = self.df.apply(calculate_distance, axis=1)
         self.df.drop(['prev_lat', 'prev_long'], axis=1, inplace=True)
 
-    def get_dummies_for_categorical_features(self:Any) ->None:
-        self.df = pd.get_dummies(self.df, 
-                                      columns=['merchant'],
-                                      drop_first=True)
+    def split_dataset_and_woe_encoding(self:any)-> tuple[DataFrame, DataFrame]:
+        """Split the data into train and test set. Then it calculate the WoE
+        encoding using only train data in order to prevent leakage. Finaly
+        it transform the categorical column with the calculed woes. Aditionaly
+        it saves the woe dict into a json file.
 
-    def get_fraud_features(self:Any)->None:
+        Returns:
+            tuple[DataFrame, DataFrame]: train_set and test_set
+            with the transformed categorical feature.
+        """
+        
+        self.train_set, self.test_set = split_train_test_set(self.df)
+        woe_encoding = calculate_woes(self.train_set, 
+                                      feature='merchant',
+                                      target='Class')
+        self.train_set['transformed_merchant'] = \
+            self.train_set.merchant.map(woe_encoding)
+        self.test_set['transformed_merchant'] = \
+            self.test_set.merchant.map(woe_encoding)
+        
+    def get_fraud_features(self:any)->None:
         self.create_time_delta_features()
         self.create_time_delta_features(by_merchant=True)
         self.get_running_statistic_features(col='Amount')
@@ -151,5 +168,5 @@ class FraudFeatureEgineering:
         self.get_num_transactions_by_cc()
         self.get_distance_between_application()
         self.get_distance_between_application(by_merchant=True)
-        self.get_dummies_for_categorical_features()
-        return self.df
+        self.split_dataset_and_woe_encoding()
+        return self.train_set, self.test_set

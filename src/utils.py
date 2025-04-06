@@ -1,6 +1,8 @@
 import yaml
+import json
 import pandas as pd
 import numpy as np
+from sklearn.model_selection import train_test_split
 from pandas import Series, DataFrame
 from geopy.distance import geodesic
 
@@ -15,6 +17,13 @@ def get_configuration(path: str='config.yaml')-> dict:
         config = yaml.safe_load(f)
     return config
 
+def generate_report_with_existent_plots(path:str)-> None:
+    plots = sorted(glob.glob("*.png"))
+    loaded_plots = [Image.open(img).convert("RGB") for img in plots]
+    if loaded_plots:
+        loaded_plots[0].save(path, save_all=True,
+                                     append_images=loaded_plots[1:]) 
+
 
 def calculate_distance(row:Series)->float:
     prevlat = 'prev_lat'
@@ -26,64 +35,94 @@ def calculate_distance(row:Series)->float:
     prev_point = (row[prevlat], row[prevlong])
     return geodesic(curr_point, prev_point).kilometers
 
-def generate_report_with_existent_plots(path:str)-> None:
-    plots = sorted(glob.glob("*.png"))
-    loaded_plots = [Image.open(img).convert("RGB") for img in plots]
-    if loaded_plots:
-        loaded_plots[0].save(path, save_all=True,
-                                     append_images=loaded_plots[1:]) 
+
+def calculate_woes(train_set:DataFrame, feature:str, 
+                   target:str, delta:float=0.5)-> dict:
+
+    grouped = train_set.groupby(feature)[target].agg(['sum', 'count'])
+    grouped['non_event'] = grouped['count'] - grouped['sum']
+
+    total_event = grouped['sum'].sum()
+    total_non_event = grouped['non_event'].sum()
+
+    grouped['woe'] = np.log(
+        ((grouped['non_event'] + delta) / (total_non_event + delta * len(grouped))) /
+        ((grouped['sum'] + delta) / (total_event + delta * len(grouped)))
+    )
+    woe_dict = grouped['woe'].to_dict() 
+    with open('woe_dict.woe' , 'w') as f:
+        json.dump(woe_dict, f)
+    
+    return woe_dict
 
 
-def build_separed_set(fusers, nfusers, df, size)-> any:
-    fraud_users = fusers[:int(len(fusers) * size)]
-    no_fraud_users = nfusers[:int(len(nfusers) * size)]
-    separed_users = list(set(list(fraud_users) + list(no_fraud_users)))
-    separed_set = df[df.credit_card_number.isin(separed_users)]
-    return separed_set
-
-def split_set(df, big_set_size):
-    fraud_users = df[df.Class==1].credit_card_number.unique().tolist()
-    no_fraud_users = df[df.Class==0].credit_card_number.unique().tolist()
-    big_set = build_separed_set(fraud_users, no_fraud_users, 
-                                df, big_set_size)
-    small_set = df[~df.credit_card_number.isin(big_set.credit_card_number.tolist())]
-    return big_set, small_set
-
-def split_train_test_val_set(df, train_size, val_size) -> tuple[DataFrame, DataFrame, DataFrame]:
-    train_set, test_set = split_set(df=df, big_set_size=train_size)
-    test_set, val_set = split_set(df=test_set, big_set_size=val_size)
-    return train_set, test_set, val_set
+def split_train_test_set(df: DataFrame,
+                         test_size:float=0.2) -> tuple[DataFrame, DataFrame]:
+    train_set, test_set = train_test_split(df, test_size=test_size,
+                                        shuffle=False)
+    return train_set, test_set
 
 
-def build_cut_table(df:DataFrame, score_col:str='score', target_col:str='Class',
-                    amount_col:str='Amount', bins:int = 20) -> DataFrame:
+def build_cut_table(df: DataFrame, score_col: str = 'score',
+                    target_col: str = 'Class', amount_col: str = 'Amount',
+                    bins: int = 20) -> DataFrame:
+    """
+    Build a cut table with the follow information:
+    - score threshold (cut)
+    - acceptance_rate
+    - number_of_fraud_accepted
+    - number_of_fraud_rejected
+    - acceptance_fraud_rate
+    - rejected_fraud_rate
+    - chargeback_rate
+    - amount_lossed
+    - amount_saved
+    
+    Args:
+        df (DataFrame): dataframe with the whole population.
+        score_col (str): Score Column.
+        target_col (str): Target Column.
+        amount_col (str): Amount Column
+        bins (int): Number of bins to make the partition.
 
+    Returns:
+        DataFrame: Cut table. 
+    """
     df = df.copy()
-    df.sort_values(by=score_col, ascending=False, inplace=True)
-    df.reset_index(drop=True, inplace=True)
-    thresholds = np.quantile(df[score_col], q=np.linspace(0, 1, bins + 1))[1:]
+
+
+    bin_edges = np.linspace(0,1, bins+1)
 
     total_population = len(df)
-    total_chargeback = df[target_col].sum()
-    total_amount_chargeback = df.loc[df[target_col] == 1, amount_col].sum()
 
     results = []
-    for cut in thresholds:
-        df_cut = df[df[score_col] >= cut]
 
-        acceptance_rate = len(df_cut) / total_population
-        chargeback_rate = df_cut[target_col].sum() / \
-                    total_chargeback if total_chargeback > 0 else 0
+    for threshold in sorted(bin_edges[:-1], reverse=True):
+        df_cut = df[df[score_col] <= threshold]
+        df_ncut = df[df[score_col] > threshold]
 
+        accepted_users = df_cut.shape[0]
+        accepted_fraud = df_cut[df_cut.Class==1].shape[0]
+        rejected_users = df_ncut.shape[0]
+        rejected_fraud = df_ncut[df_ncut.Class==1].shape[0]
+        acceptance_rate = (len(df_cut) / total_population) * 100
+        acceptance_fraud_rate = (accepted_fraud /accepted_users) * 100 if accepted_users else 0
+        rejected_fraud_rate = (rejected_fraud/ rejected_users) * 100 if rejected_users else 0
+        
+        chargeback_rate = df_cut[target_col].mean()
         amount_lossed = df_cut.loc[df_cut[target_col] == 1, amount_col].sum()
-        amount_saved = total_amount_chargeback - amount_lossed
+        amount_saved = df_ncut.loc[df_ncut[target_col] == 1, amount_col].sum()
 
         results.append({
-            "cut": cut,
+            "cut": threshold,
             "acceptance_rate": acceptance_rate,
+            "number_of_fraud_accepted": accepted_fraud,
+            "number_of_fraud_rejected":rejected_fraud,
+            "accepted_fraud_rate": acceptance_fraud_rate,
+            "rejected_fraud_rate": rejected_fraud_rate,
             "chargeback_rate": chargeback_rate,
             "amount_lossed": amount_lossed,
             "amount_saved": amount_saved
         })
 
-    return DataFrame(results)
+    return pd.DataFrame(results)
