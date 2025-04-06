@@ -89,7 +89,7 @@ class FraudFeatureEgineering:
         self.df['prev_running_std'] = \
             self.df.groupby(self.merchant_grouper)['running_std_Amount_by_merchant'].shift(periods=1)
 
-        self.df['is_anormal_amount'] = (self.df['Amount'] > (self.df['prev_running_mean'] \
+        self.df['is_anormal_amount'] = (self.df['Amount'] > (self.df['prev_running_mean']
                                         + confidence * self.df['prev_running_std'])) * 1
         self.df.drop(['prev_running_mean', 'prev_running_std'], axis=1, inplace=True)
 
@@ -138,7 +138,7 @@ class FraudFeatureEgineering:
         self.df[col_name] = self.df.apply(calculate_distance, axis=1)
         self.df.drop(['prev_lat', 'prev_long'], axis=1, inplace=True)
 
-    def split_dataset_and_woe_encoding(self:any)-> tuple[DataFrame, DataFrame]:
+    def split_dataset_and_woe_encoding(self:any)-> None:
         """Split the data into train and test set. Then it calculate the WoE
         encoding using only train data in order to prevent leakage. Finaly
         it transform the categorical column with the calculed woes. Aditionaly
@@ -158,7 +158,15 @@ class FraudFeatureEgineering:
         self.test_set['transformed_merchant'] = \
             self.test_set.merchant.map(woe_encoding)
         
-    def get_fraud_features(self:any)->None:
+    def get_fraud_features(self:any)->tuple:
+        """
+        Make all the feature engineering.
+
+        Returns:
+            train_set(data): train_set transformed.
+            test_set(data): test_set transformed.
+
+        """
         self.create_time_delta_features()
         self.create_time_delta_features(by_merchant=True)
         self.get_running_statistic_features(col='Amount')

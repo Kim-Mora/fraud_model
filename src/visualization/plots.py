@@ -12,7 +12,6 @@ from sklearn.metrics import (
     recall_score
 )
 import matplotlib.pyplot as plt
-import matplotlib.ticker as mtick
 import seaborn as sns
 from matplotlib.backends.backend_pdf import PdfPages
 
@@ -40,7 +39,7 @@ def get_eda_html(file_name:str, data:DataFrame) -> None:
 
     Args:
         file_name (str): name to save the report.
-        data_path (str): path to the data to be analized.
+        data (DataFrame): data to be analized.
     """
     report = sv.analyze(source=data)
     report_path = os.path.join(ROOT_DIR, 'reports', file_name)
@@ -115,6 +114,7 @@ def create_report_for_best_model_on_pycaret_benchmarc(best_model:any,
 
     Args:
         best_model (Any): best_model on pycaret benchmark
+        model_type (str): type of model
     """
     
     plot_types = ['confusion_matrix','auc',
@@ -131,7 +131,7 @@ def create_report_for_best_model_on_pycaret_benchmarc(best_model:any,
     report_path = os.path.join(REPORTS_DIR, report_name)
     generate_report_with_existent_plots(report_path)
 
-def create_comparison_metrics_report(models:dict, X_test:DataFrame, 
+def create_comparison_metrics_report(models:dict, x_test:DataFrame,
                                        y_test:Series) ->None:
 
     """Generates a report with the comparison of the follow metrics:
@@ -143,6 +143,8 @@ def create_comparison_metrics_report(models:dict, X_test:DataFrame,
 
     Args: 
         models (dict): dict with the follow way
+        x_test (DataFrame): test data
+        y_test (Series): test data
     """
     
     metrics = ['auc', 'aucpr', 'precision', 'recall']
@@ -160,8 +162,8 @@ def create_comparison_metrics_report(models:dict, X_test:DataFrame,
         for metric in metrics:
             scores = {}
             for name, model in models.items():
-                y_scores = model.predict_proba(X_test)[:, 1]
-                y_pred = model.predict(X_test)
+                y_scores = model.predict_proba(x_test)[:, 1]
+                y_pred = model.predict(x_test)
 
                 if metric in ['auc', 'aucpr']:
                     score = metric_funcs[metric](y_test, y_scores)
@@ -195,8 +197,8 @@ def create_comparison_metrics_report(models:dict, X_test:DataFrame,
 def create_acceptance_vs_chargeback_rate_plot(cut_table:DataFrame,
                                               fraud_limit:float=0.012)-> None:
     """Generates an acceptance rate vs chargeback rate plot
-       with a given cut table. It also sets point where wthe 
-       acceptded_fraud_rate is lower that a given fraud limit.
+       with a given cut table. It also sets point where the
+       accepted_fraud_rate is lower that a given fraud limit.
 
     Args:
         cut_table (DataFrame): Cut table with the follow columns:
@@ -205,6 +207,7 @@ def create_acceptance_vs_chargeback_rate_plot(cut_table:DataFrame,
         - amount_saved
         - amount_lossed
         - accepted_fraud_rate
+        fraud_limit (float): threshold to be used.
     """
     
     x = cut_table['acceptance_rate']
@@ -246,8 +249,8 @@ def create_acceptance_vs_chargeback_rate_plot(cut_table:DataFrame,
         c='red'
     )
 
-    plt.gca().xaxis.set_major_formatter(mtick.PercentFormatter(1.0))
-    plt.gca().yaxis.set_major_formatter(mtick.PercentFormatter(1.0))
+    #plt.gca().xaxis.set_major_formatter(mtick.PercentFormatter(1.0))
+    #plt.gca().yaxis.set_major_formatter(mtick.PercentFormatter(1.0))
 
     plt.xlabel('Acceptance Rate', fontsize=15)
     plt.ylabel('chargeback Rate', fontsize=15)
@@ -258,22 +261,22 @@ def create_acceptance_vs_chargeback_rate_plot(cut_table:DataFrame,
     plt.show()
 
 
-def create_shap_summary_plot(X:DataFrame, model:any)-> None:
+def create_shap_summary_plot(x:DataFrame, model:any)-> None:
     """Generates a shap summary plot in order to have explainability
        for a given model.
 
     Args:
-        X (DataFrame): DataFrame with features.
+        x (DataFrame): DataFrame with features.
         model (any): Pycaret pipeline with a trained model
 
     """
 
     preprocessor = model[:-1]
-    X_transformed = preprocessor.transform(X)
+    x_transformed = preprocessor.transform(x)
     estimator = model.named_steps['actual_estimator']
 
-    explainer = shap.Explainer(estimator, X_transformed)
-    shap_values = explainer.shap_values(X_transformed)
+    explainer = shap.Explainer(estimator, x_transformed)
+    shap_values = explainer.shap_values(x_transformed)
 
     shap.summary_plot(shap_values, X_transformed, plot_type='dot',
                       max_display=30)

@@ -2,6 +2,7 @@ __pycache__/
 *.py[cod]
 
 *.parquet
-
-*.html
-*.csvnotebooks/test_fixed_data.csv
+*.csv
+*.pkl
+*.png
+*log
