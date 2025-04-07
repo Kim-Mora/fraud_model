@@ -255,9 +255,6 @@ def create_acceptance_vs_chargeback_rate_plot(cut_table:DataFrame,
         c='red'
     )
 
-    #plt.gca().xaxis.set_major_formatter(mtick.PercentFormatter(1.0))
-    #plt.gca().yaxis.set_major_formatter(mtick.PercentFormatter(1.0))
-
     plt.xlabel('Acceptance Rate', fontsize=15)
     plt.ylabel('chargeback Rate', fontsize=15)
     plt.title("Acceptance Rate vs Chargeback Rate. Labels: amount saved by rejected fraud users", fontsize=20)
