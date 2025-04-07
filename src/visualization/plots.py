@@ -63,23 +63,29 @@ def create_bivariate_plots(df:DataFrame, column:str,
     df['bins'], bin_edges = pd.qcut(df[column], q=bins, 
                                     retbins=True, duplicates='drop')
 
-    for edge in bin_edges:
-        df_cut = df[df[column] <= edge]
 
-        fraud_users = (df_cut[df_cut.Class==1].shape[0] / all_fraud_users) * 100
-        nfraud_users = (df_cut[df_cut.Class==0].shape[0] / all_nfraud_users) * 100
-        results.append({
-            "cut": edge,
-            "fraud_users": fraud_users,
-            "no_fraud_users": nfraud_users
-        })
-    data_results = pd.DataFrame(results)
-    data_results.set_index('cut', inplace=True)
-    fig, ax= plt.subplots(figsize=(20,10))
-    data_results[['fraud_users', 'no_fraud_users']].plot(kind='bar', ax=ax)
-    ax.set_title(f'Bivariate analysis by {column}', fontsize=20)
-    ax.set_xlabel(f'{column} bins')
-    ax.set_ylabel('% users by fraud group')
+    grouped = df.groupby(['bins', 'Class']).size().unstack(fill_value=0)
+
+    # Renombrar columnas
+    grouped.columns = ['no_fraud_users', 'fraud_users']
+
+    grouped_percent = pd.DataFrame({
+        'fraud_users': (grouped['fraud_users'] / all_fraud_users) * 100,
+        'no_fraud_users': (grouped['no_fraud_users'] / all_nfraud_users) * 100
+    })
+
+    fig, ax = plt.subplots(figsize=(20,10))
+    ax = grouped_percent[['fraud_users', 'no_fraud_users']].plot(
+        kind='bar',
+        color=['crimson', 'steelblue'],
+        ax=ax
+    )
+
+    ax.set_title(f'Bivariate analysis by {column}', fontsize=16)
+    ax.set_xlabel(f'{column} bins', fontsize=12)
+    ax.set_ylabel('% of total users (per class)', fontsize=12)
+    ax.grid(axis='y', linestyle='--', alpha=0.5)
+    fig.tight_layout()
     fig.show()
 
 
@@ -276,7 +282,7 @@ def create_shap_summary_plot(x:DataFrame, model:any)-> None:
     estimator = model.named_steps['actual_estimator']
 
     explainer = shap.Explainer(estimator, x_transformed)
-    shap_values = explainer.shap_values(x_transformed)
+    shap_values = explainer.shap_values(x_transformed, check_additivity=False)
 
-    shap.summary_plot(shap_values, X_transformed, plot_type='dot',
+    shap.summary_plot(shap_values, x_transformed, plot_type='dot',
                       max_display=30)
